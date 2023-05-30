@@ -1,0 +1,420 @@
+---
+title: "Marketing Campaign Personality Analysis"
+author: "Kyle Frankel"
+date: 'Mar 9, 2022'
+output: html_document
+---
+
+
+```{r setup, include=FALSE, echo=FALSE}
+# Package loading
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(knitr)
+library(dplyr)
+#skimr found on google to look at dataframe easier
+#Also installed: install.packages("devtools") devtools::install_github("ropensci/skimr")
+library(skimr)
+#lubridate found on google to use dmy 
+library(lubridate)
+options(scipen=4)
+library(plotly)  # for interactive graphics
+library(plotrix)
+library(DT)
+library(readr)
+```
+
+
+
+```{r, include=FALSE, echo=FALSE}
+# Code Book by IVJYOT SINGH 
+# https://www.kaggle.com/ivjyotsingh/customer-personality-data-unsupervised-learning
+code_book <- tribble(
+
+  ~Variable_Name, ~Describtion,
+
+  "Who are the customers?", "",
+
+  "ID", "Customer's unique identifier",
+
+  "Year_Birth", "Customer's birth year",
+
+  "Education", "Customer's education level",
+
+  "Marital_Status", "Customer's marital status",
+
+  "Income", "Customer's yearly household income",
+
+  "Kidhome", "Number of children in customer's household",
+
+  "Teenhome", "Number of teenagers in customer's household",
+
+  "Dt_Customer", "Date of customer's enrollment with the company",
+
+  "Recency", "Number of days since customer's last purchase",
+
+  "Complain", "1 if the customer complained in the last 2 years, 0 otherwise",
+
+  "What and how much are they spending on?", "",
+
+  "MntWines", "Amount spent on wine in last 2 years",
+
+  "MntFruits", "Amount spent on fruits in last 2 years",
+
+  "MntMeatProducts", "Amount spent on meat in last 2 years",
+
+  "MntFishProducts", "Amount spent on fish in last 2 years",
+
+  "MntSweetProducts", "Amount spent on sweets in last 2 years",
+
+  "MntGoldProds", "Amount spent on gold in last 2 years",
+
+  "How was their interaction with the Advertisement Campaign?", "",
+
+  "NumDealsPurchases", "Number of purchases made with a discount",
+
+  "AcceptedCmp1", "1 if customer accepted the offer in the 1st campaign, 0 otherwise",
+
+  "AcceptedCmp2", "1 if customer accepted the offer in the 2nd campaign, 0 otherwise",
+
+  "AcceptedCmp3", "1 if customer accepted the offer in the 3rd campaign, 0 otherwise",
+
+  "AcceptedCmp4", "1 if customer accepted the offer in the 4th campaign, 0 otherwise",
+
+  "AcceptedCmp5", "1 if customer accepted the offer in the 5th campaign, 0 otherwise",
+
+  "Response", "1 if customer accepted the offer in the last campaign, 0 otherwise",
+
+  "Which Platform is being used to purchase?", "",
+
+  "NumWebPurchases", "Number of purchases made through the company’s website",
+
+  "NumCatalogPurchases", "Number of purchases made using a catalogue",
+
+  "NumStorePurchases", "Number of purchases made directly in stores",
+
+  "NumWebVisitsMonth", "Number of visits to company’s website in the last month")
+
+code_book <- code_book %>%
+  mutate(across(dplyr::everything(), ~ str_to_title(.)))
+
+kable(code_book)
+```
+
+
+#### Importing the data
+
+```{r, echo=FALSE}
+# https://www.kaggle.com/imakash3011/customer-personality-analysis
+library(readr)
+
+# my_data_messy <- read_delim("Desktop/Winter 2022 Academics/MSBA*6630*R/Final Project/marketing_campaign.csv",
+#     delim = "\t", escape_double = FALSE,
+#     trim_ws = TRUE)
+
+# my_data_messy <- read_delim("marketing_campaign.csv",
+#     delim = "\t", escape_double = FALSE,
+#     trim_ws = TRUE)
+
+# This one is the original one I used for the analysis
+my_data_messy <- read.csv("marketing_campaign.csv",sep="\t", header=TRUE)
+str(my_data_messy)
+```
+
+
+# Data Processing and Summarization
+
+The data that will be used for this analysis comes from Kaggle. The dataset owner is Akash Patel and t was last updated 6 months ago. The data consists of 2240 observations of 29 variables. The purpose of this project is to create a regression to figure out which customers spend the most money in this store, which will allow us to see who our audience is, but also know where there is more room to grow.
+
+#### Data Cleaning
+
+```{r, echo=FALSE}
+# Taking age from Year_Birth
+my_data_messy$Age <- 2021 - my_data_messy$Year_Birth
+
+# Adding together KidHome and Teenhome, as I am only interested in total number of kids, not the specific ages of the kids
+my_data_messy$Kids <- my_data_messy$Kidhome + my_data_messy$Teenhome
+
+# Column for total amount spent by adding up the amount spent on wines, fruits, meat, fish, sweets, and gold will be used for the regression
+my_data_messy$TotalMntSpent <- my_data_messy$MntWines + my_data_messy$MntFruits + my_data_messy$MntMeatProducts + my_data_messy$MntFishProducts + my_data_messy$MntSweetProducts + my_data_messy$MntGoldProds
+
+# Manipulating the Dt_Customer so that only the year is taken out
+my_data_messy$Dt_Customer <- as.Date(my_data_messy$Dt_Customer, format = "%d-%m-%Y")
+my_data_messy$YearsCustomer <- dmy(my_data_messy$Dt_Customer)
+my_data_messy$YearsCustomer <- year(my_data_messy$Dt_Customer)
+my_data_messy$YearsCustomer <- 2021-(my_data_messy$YearsCustomer)
+
+# Converting numeric and integer variables into factor variables and factor level names. Also renaming variables to better names. 
+column_names <- c('Education' ,'Marital_Status', 'AcceptedCmp1', 'AcceptedCmp2', 'AcceptedCmp3', 'AcceptedCmp4', 'AcceptedCmp5', 'Complain', 'Response')
+my_data_messy[,column_names] <- lapply(my_data_messy[,column_names] , factor)
+my_data_messy <- my_data_messy %>%
+  mutate(Education = recode_factor(Education, `1` = "basic", `2` = "graduation", `3` = "master+"),) %>%
+  mutate(Marital_Status = recode_factor(Marital_Status, `1` = "single", `2` = "couple")) %>%
+  mutate_at(c('AcceptedCmp1', 'AcceptedCmp2', 'AcceptedCmp3', 'AcceptedCmp4', 'AcceptedCmp5', 'Complain', 'Response'),
+            ~ recode_factor(.x, `0` = "no", `1` = "yes"))
+
+# Renaming Variables
+my_data_messy <- my_data_messy %>%
+  rename(LastPurchaseDays = Recency,
+         AcceptedLastCmp = Response, 
+    Wine = MntWines,
+    Fruit = MntFruits,
+    Meat = MntMeatProducts,
+    Fish = MntFishProducts,
+    Sweet = MntSweetProducts,
+    Gold = MntGoldProds)
+
+```
+
+```{r, echo=FALSE}
+# Creating a new dataframe by only taking the columns of interest from the old dataframe
+marketing_campaign <- my_data_messy %>%
+  select(ID, Age, Education, Marital_Status, Kids, YearsCustomer, Income, Wine, Fruit, Meat, Fish, Sweet, Gold, NumDealsPurchases,TotalMntSpent)
+
+head(marketing_campaign)
+# skimr::skim_without_charts(marketing_campaign)
+```
+
+
+
+
+```{r, echo=FALSE}
+# As can be seen in the table above, I only have 24 missing values, which are all in the income column. I will replace these values with the median income to fill up all the rows. 
+#Code found from https://www.codingprof.com/how-to-replace-missing-values-with-the-median-in-r/
+marketing_campaign$Income[is.na(marketing_campaign$Income)] <- 
+                                              median(marketing_campaign$Income, na.rm = T)
+
+# There seems to be an outlier past 600,000, which is the only value that is more than 200000 in the dataset. Let's remove once more replace it with the median
+# Finds outlier
+
+# This code to find max income outlier
+# max(marketing_campaign$Income)
+marketing_campaign$Income[marketing_campaign$Income == 666666] <- median(marketing_campaign$Income, na.rm = T)
+p <- ggplot(marketing_campaign) + geom_histogram(mapping = aes(x=Income),bins=100)
+ggplotly(p)
+```
+
+
+Most of the incomes of the households in this dataset are distributed between 0 and 100,000 per year. There are some outliers at around 150,000 per year as well. I removed the 666666 value as it is most likely not true and replaced it with median income. 
+
+
+
+```{r, echo=FALSE}
+# datatable
+marketing_campaign %>%
+  group_by(Age, Kids) %>%
+  summarize(`Average Income` = round(mean(Income, na.rm = TRUE), 0)) %>%
+  datatable(options(list(pageLength = 12)))
+```
+
+This is a datatable if somebody wanted to look at their age and how many kids they have to see how much income they would have if they were a customer. It is nice to have a search bar and be able to search for different ages.
+
+```{r, echo=FALSE}
+marketing_campaign$Education <- fct_collapse(marketing_campaign$Education,
+                                         "basic" = "Basic",
+                                         "bachelor's" = "Graduation",
+                                         "master+" = c("2n Cycle", "Master","PhD"))
+
+# Graph from: https://www.statmethods.net/graphs/pie.html
+mytable <- table(marketing_campaign$Education)
+lbls <- paste(names(mytable), "\n", mytable, sep="")
+pie3D(mytable,labels=lbls,explode=0.3,
+   main="Pie Chart of Education\n (with sample sizes)")
+```
+
+
+Most of our clients have at least graduated with a Bachelor's degree and above. We do not have many clients who only have a high school diploma. This could be something to look into if we want to expand. The Master+ includes people who have either gotten 2n Cycle, a Master's, and/or a PhD.
+
+
+
+```{r, echo=FALSE}
+marketing_campaign$Marital_Status <- fct_collapse(marketing_campaign$Marital_Status,
+                                         "Single" = c("Absurd",
+                                                      "Alone","Divorced","Single",
+                                                      "Widow","YOLO"),
+                                         "Together" = c("Married","Together"))
+
+table(marketing_campaign$Marital_Status)
+```
+
+
+We have twice as many clients claim to be together than those we claim to be single.Single clients include people who stated: absurd, alone, divorced, single, widow, YOLO. While together clients are people who stated they are either married or together.
+
+
+
+```{r, echo=FALSE}
+marketing_campaign <- marketing_campaign %>%
+  filter(Age < 80)
+ggplot(marketing_campaign) + geom_bar(mapping = aes(x=Age))
+```
+
+
+Most of our clients are between the ages of 40 and 60. We do not have many clients under the age of 25 and over the age of 70. We could think about expanding our products to also target a younger audience. 
+
+
+```{r, echo=FALSE}
+tbl.income <- marketing_campaign %>%
+  group_by(Marital_Status, Education) %>%
+  summarize(median(Income))
+library(knitr)  # load the package
+tbl.income %>% 
+  kable(format = "markdown") #the format looks better
+```
+
+When grouping by marital status and education, we can see that our customers who are together tend to have a higher income. The biggest difference is the income for customers who have at least their Bachelor's compared to those who only have their high school diplomas. Clients who only have high school diplomas see the biggest difference in being together or not. When they are, their household income increases significantly compared to people who have their Bachelor's and above. 
+
+
+
+```{r, echo=FALSE}
+base.plot <- ggplot(data = marketing_campaign, aes(y = TotalMntSpent, x = Education, fill = Education)) + 
+  geom_boxplot() 
+ggplotly(base.plot)
+```
+
+
+The most amount of money spent by our clients in our stores are from people who have at least a Bachelor's degree and above. This is consistent with the median income for each of these education brackets. People with more income and better education are the ones who are spending the most amount of money in our stores. 
+On average, people who have at least Bachelor's degrees and above spend about $410 dollars every month at our stores, while the people with only basic educations spend about 57 dollars. There are some outliers who have spent around the 2500 dollars mark. 
+
+
+# Methodology
+The only variable with missing values was the income variable. To deal with these, I replaced the missing values with median income values. Because the data for income is right skewed, replacing the median with missing values is a good alternative.
+
+As for data cleaning I got the age variable from the year birth variable taking out the year and subtracting it from 2021 (when data was last updated). I also recoded some of the educational levels and marital status responses so that it would be more uniform and usable for analysis. I added together kidhome and teenhome to create a new variable kids, which would be the amount of kids the customer has. For more detail, look at the code under the "Data Cleaning" section.
+
+This dataset has many variables that I do not end up using at the end of my analysis such as the amount of years the customer has been a customer, the number of days since their last purchase, number of purchases made with a discount, how they interacted with advertisement campaigns 1-5, and lastly which platforms they used to purchase the product. These variables were removed because they were not needed for the direction I wanted to go into for this analysis. 
+
+```{r, echo=FALSE}
+plot_ly(marketing_campaign, x = ~Kids, y = ~Age, type = "box")
+```
+
+Initially I thought this graph would look slightly different with 0 kids being the youngest audience. However at a second glance, it makes sense that some people do not want kids and could be much older. Especially looking at our customer base being mostly between the ages of 40 and 60. We do not have many young people who do not have kids yet. Rather, we have older people who never want to get kids. This can be seen with the variance that the boxplot of 0 kids has. It also makes sense that people with more kids tend to be older. 
+
+
+```{r, echo=FALSE}
+p <- ggplot(marketing_campaign, aes(x = Age, y = Income)) + 
+  geom_point(alpha = 0.4) 
+ggplotly(p)
+```
+
+
+Although age and income usually have a positive relationship when looking at a population, we do not really see a positive relationship in our dataset based off of our customers. This was a surprise since I thought it would show an interesting trend.
+
+
+
+```{r, echo=FALSE}
+p <- ggplot(marketing_campaign, aes(x = Income, y = TotalMntSpent, color = Education)) + 
+  geom_point(alpha = 0.4) 
+ggplotly(p)
+```
+
+We do see a positive relationship between income and the total amount spent at our stores by the customers. Furthermore, it looks like customers who have completed high levels of education also are the ones who are our bigger clients.
+
+
+
+```{r, echo=FALSE}
+p <- ggplot(marketing_campaign, aes(x = Income, y = TotalMntSpent, color = Marital_Status)) + 
+  geom_point(alpha = 0.4) 
+ggplotly(p)
+```
+
+
+When we look at the impact of marital status on total amount spent, and still including income, we still see the positive relationship between income and total amount spent, however we do not see a relationship between our client's marital status and the amount they end up spending.
+
+
+
+My analysis will focus on the effects of age, education, marital status, kids, and income on each individual set of products that we sell including: wine, fruits, meat, fish, sweet, and gold. Even though I will only specifically look at wine, this same process of looking at the regression, checking diagnostic plots, and running a chi squared test can be done for each of the other 4 dependent variables. I decided against using total amount spent as I really want to focus on each individual product and attempt to create a marketing strategy to segment ads towards customers so that they can continue to purchase those products. If we can correctly segment our market, we can really tailor our products towards our customers determined by key traits. 
+
+
+# Findings
+
+
+```{r}
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
+{
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  r <- abs(cor(x, y))
+  txt <- format(c(r, 0.123456789), digits = digits) [1]
+  txt <- paste0(prefix, txt)
+  if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+  text(0.5, 0.5, txt, cex = pmax(1, cex.cor *r))
+}
+# panel.cor
+pairs(~ Age + Education + Marital_Status + Kids + Income, lower.panel = panel.cor, data = marketing_campaign)
+```
+
+There is no strong evidence of collinearities between my variables of interest. The biggest collinearity lies between kids and income at 0.34, which is not strong. Due to no multi-collinearity between variables, I will not be removing any of them from my regressions.
+
+
+
+```{r, echo=FALSE}
+p <- ggplot(marketing_campaign, aes(x = Income, y = Wine, color = Age)) + 
+  geom_point(alpha = 0.4) 
+ggplotly(p)
+```
+
+
+The graph above shows the positive relationship between income and age on wine. The higher the income and the older the customer, the more money they have spent on wine in our stores. In the bottom right corner, we do see some outliers of people with high income who are not purchasing much wine. This could be seen as an opportunity for us if we can target them and have them start consuming our wine. 
+
+
+
+```{r, echo=FALSE}
+ggplot(data = marketing_campaign, mapping = aes(x = Income, y = Wine)) + 
+  geom_point() +
+  facet_wrap(~Kids) +
+  theme_bw()
+
+```
+
+We can see that most of our clients who purchase wine have either 0 or 1 kids. There are also some who have 2 kids and less who have 3 kids, but what is consistent is that the less kids they have, the more they spend on wine at our stores. 
+
+
+
+```{r, echo=FALSE}
+# Regression Wine
+Wine.lm <- lm(Wine ~ Age + Education + Marital_Status + Kids + Income, data = marketing_campaign)
+summary(Wine.lm)
+```
+
+
+We can see that Age and Income are the only significant positive variables at the .01 and .001 level respectively. A one year increase in age constitutes to 1.35 dollars more spent on wine. Furthermore, a 1 dollar increase in income leads to about 0.01 dollars more spent on wine. The other significant variables are Bachelor's degree and kids, which have a negative relationship with wine at the .001 level. When a customer has a Bachelor's degree compared to a Master's degree or above, they spend about 43.83 dollars less on wine. As for kids, each additional kid that the customer has, leads to a 64.34 dollar decrease in the amount they spend on wine in the last 2 years. 
+
+Based off the results from the regression, our target market to sell more wine should be aimed towards older people with Master's degrees and above, do not have kids, and have a higher income. 
+
+
+```{r, echo=FALSE}
+# Anova Wine
+anova(update(Wine.lm,.~.-Income), Wine.lm, test = "Chisq")
+```
+
+
+With a p-value of 2.2e-16, income is highly statistically significant on the amount of money customers spend on wine. This further confirms the outcome of the previous regression which shows the importance of income on wine consumption. 
+
+
+
+```{r, echo=FALSE}
+# Diagnostics Plots Wine
+Diag.Wine.lm <- plot(Wine.lm) 
+```
+
+
+When looking at the Residuals vs. Fitted plot, we do not find equally spread residuals around the horizontal line, which is a bad indication that we do have non-linear relationships. We also see some outliers at the bottom right corner. These should be looked at as an opportunity. Either we can maximize our profit or minimize our costs depending on why they are outliers. 
+
+The normal Q-Q plot again shows that the residuals are not normally distributed since it does not completely follow the straight dashed line. We have some outliers at the bottom left and top right.
+
+In the She Scale-Location plot we do not see the residuals spread randomly and equally along the range of predictors. Most are between 0 and 1000, and some outliers in the top right are making this a steep slope. 
+
+For the Residuals vs. Leverage plot, we barely see Cook's Distance dashed red line, which is good. We do however see that row 614 is going against the regression and could have a significant impact on our regression outcome. However the scales are very small so it most likely does not have much impact on our model. 
+
+All in all, the diagnostics plots show that we do have some outliers and we should look into how we can deal with them. One way to solve the issue is by creating two separate models. By doing this, we could improve accuracy for each model and have less outliers.
+
+
+# Discussion
+
+In this analysis, we find that people who are generally between the ages of 40-60, have little to no kids, have at least a Bachelor's degree, and are high income individuals are the people who are spending the most money on wine. This is important to know, because we can use this information to create targeted ads where we attempt to lure in those customers with interesting marketing campaigns. This can lead to an increase in the purchase of wine at our store. The analysis can be repeated for fruit, meat, fish, sweet, and gold depending on the dependent variable of interest.
+
+The accuracy of the linear model could be significantly increased if we dealt with the outliers. Either by moving these from the dataframe or by creating two separate models, we could see better diagnostic plots, which could increase our confidence in this analysis.
+
+Although more work can be done to increase the confidence levels and really start segmenting our customer base, I believe that the model is very believable and make sense on a logical level. I think that this analysis reveals interesting trends in consumer preferences based on their age, education, kids, and income. However, the regression could even use some more variables to help identify the market audience such as sex and race. If we have more information on the demographics of the customers, we can further analyze how each different background is interested in our products and how we can really tailor our products to meet the needs of our consumers.
+
+I would be confident to present my work to policy makers. Even though my manager would probably have me run some more tests, deal with the outliers, and maybe run a k-means clustering model, I believe that the regression makes a lot of sense and could be used in the real world. 
